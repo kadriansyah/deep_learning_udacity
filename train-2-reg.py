@@ -7,6 +7,16 @@ from six.moves import range
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 
+# a = np.array([[1,2,3,10],[4,5,6,11],[7,8,9,12]])
+# print(a[:,:2])
+# print(tf.truncated_normal([10 * 5, 7]))
+#
+# graph = tf.Graph()
+# x = tf.nn.relu([1,2,3,4, -1,-3,-5])
+# model = tf.global_variables_initializer()
+# with tf.Session() as session:
+#     print(session.run(x))
+
 pickle_file = 'notMNIST.pickle'
 with open(pickle_file, 'rb') as f:
     save = pickle.load(f)
@@ -39,54 +49,54 @@ print('Training set', train_dataset.shape, train_labels.shape)
 print('Validation set', valid_dataset.shape, valid_labels.shape)
 print('Test set', test_dataset.shape, test_labels.shape)
 
-# SGD with relu
+# With gradient descent training, even this much data is prohibitive.
+# Subset the training data for faster turnaround.
+train_subset = 10000
 batch_size = 128
-relu_count = 1024 # hidden nodes count
+
+# This is a good beta value to start with
+beta = 0.01
 
 graph = tf.Graph()
 with graph.as_default():
-    # Input data. For the training data, we use a placeholder that will be fed at run time with a training minibatch.
+    # Input data.
+    # Load the training, validation and test data into constants that are attached to the graph.
+    # tf_train_dataset = tf.constant(train_dataset[:train_subset, :])
+    # tf_train_labels = tf.constant(train_labels[:train_subset])
     tf_train_dataset = tf.placeholder(tf.float32, shape=(batch_size, image_size * image_size))
     tf_train_labels = tf.placeholder(tf.float32, shape=(batch_size, num_labels))
     tf_valid_dataset = tf.constant(valid_dataset)
     tf_test_dataset = tf.constant(test_dataset)
 
     # Variables.
-    weights_1 = tf.Variable(tf.truncated_normal([image_size * image_size, relu_count]))
-    biases_1 = tf.Variable(tf.zeros([relu_count]))
+    # These are the parameters that we are going to be training. The weight
+    # matrix will be initialized using random valued following a (truncated)
+    # normal distribution. The biases get initialized to zero.
+    weights = tf.Variable(tf.truncated_normal([image_size * image_size, num_labels]))
+    biases = tf.Variable(tf.zeros([num_labels]))
 
-    # send relu to final nn layer
-    weights_2 = tf.Variable(tf.truncated_normal([relu_count, num_labels]))
-    biases_2 = tf.Variable(tf.zeros([num_labels]))
-
-    # Training computation. (#layer_1 -> layer_2(relu) -> layer_3)
-    logits = tf.matmul( tf.nn.relu(tf.matmul(tf_train_dataset, weights_1) + biases_1), weights_2) + biases_2
+    # Training computation.
+    # We multiply the inputs with the weight matrix, and add biases. We compute
+    # the softmax and cross-entropy (it's one operation in TensorFlow, because
+    # it's very common, and it can be optimized). We take the average of this
+    # cross-entropy across all training examples: that's our loss.
+    logits = tf.matmul(tf_train_dataset, weights) + biases
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=tf_train_labels))
 
+    # Loss function using L2 Regularization
+    regularizer = tf.nn.l2_loss(weights)
+    loss = tf.reduce_mean(loss + beta * regularizer)
+
     # Optimizer.
+    # We are going to find the minimum of this loss using gradient descent.
     optimizer = tf.train.GradientDescentOptimizer(0.5).minimize(loss)
 
-    # Predictions for the training
-    train_prediction = tf.nn.softmax(logits_2)
-
-    # Predictions for validation
-    logits_1 = tf.matmul(tf_valid_dataset, weights_1) + biases_1
-    relu_layer= tf.nn.relu(logits_1)
-    logits_2 = tf.matmul(relu_layer, weights_2) + biases_2
-
-    valid_prediction = tf.nn.softmax(logits_2)
-
-    # Predictions for test
-    logits_1 = tf.matmul(tf_test_dataset, weights_1) + biases_1
-    relu_layer= tf.nn.relu(logits_1)
-    logits_2 = tf.matmul(relu_layer, weights_2) + biases_2
-
-    test_prediction =  tf.nn.softmax(logits_2)
-
-    # # Predictions for the training, validation, and test data.
-    # train_prediction = tf.nn.softmax(logits)
-    # valid_prediction = tf.nn.softmax(tf.matmul( tf.nn.relu(tf.matmul(tf_valid_dataset, weights_1) + biases_1), weights_2) + biases_2)
-    # test_prediction = tf.nn.softmax(tf.matmul( tf.nn.relu(tf.matmul(tf_test_dataset, weights_1) + biases_1), weights_2) + biases_2)
+    # Predictions for the training, validation, and test data.
+    # These are not part of training, but merely here so that we can report
+    # accuracy figures as we train.
+    train_prediction = tf.nn.softmax(logits)
+    valid_prediction = tf.nn.softmax(tf.matmul(tf_valid_dataset, weights) + biases)
+    test_prediction = tf.nn.softmax(tf.matmul(tf_test_dataset, weights) + biases)
 
 num_steps = 3001
 

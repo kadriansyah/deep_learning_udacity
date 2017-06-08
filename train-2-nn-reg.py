@@ -23,6 +23,7 @@ with open(pickle_file, 'rb') as f:
 
 image_size = 28
 num_labels = 10
+
 def reformat(dataset, labels):
     dataset = dataset.reshape((-1, image_size * image_size)).astype(np.float32)
     # Map 0 to [1.0, 0.0, 0.0 ...], 1 to [0.0, 1.0, 0.0 ...]
@@ -39,9 +40,17 @@ print('Training set', train_dataset.shape, train_labels.shape)
 print('Validation set', valid_dataset.shape, valid_labels.shape)
 print('Test set', test_dataset.shape, test_labels.shape)
 
+# ### Problem 2
+# # Let's demonstrate an extreme case of overfitting. Restrict your training data to just a few batches. What happens?
+# train_dataset = train_dataset[:500, :]
+# train_labels = train_labels[:500]
+
 # SGD with relu
 batch_size = 128
 relu_count = 1024 # hidden nodes count
+
+# This is a good beta value to start with
+beta = 0.01
 
 graph = tf.Graph()
 with graph.as_default():
@@ -60,8 +69,24 @@ with graph.as_default():
     biases_2 = tf.Variable(tf.zeros([num_labels]))
 
     # Training computation. (#layer_1 -> layer_2(relu) -> layer_3)
-    logits = tf.matmul( tf.nn.relu(tf.matmul(tf_train_dataset, weights_1) + biases_1), weights_2) + biases_2
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=tf_train_labels))
+    logits_1 = tf.matmul(tf_train_dataset, weights_1) + biases_1
+    relu_layer = tf.nn.relu(logits_1)
+    logits_2 = tf.matmul(relu_layer, weights_2) + biases_2
+
+    # Normal loss function
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits_2, labels=tf_train_labels))
+
+    # Loss function with L2 Regularization with beta=0.01
+    regularizers = tf.nn.l2_loss(weights_1) + tf.nn.l2_loss(weights_2)
+    loss = tf.reduce_mean(loss + beta * regularizers)
+
+    # # Training computation. (#layer_1 -> layer_2(relu) -> layer_3)
+    # logits = tf.matmul( tf.nn.relu(tf.matmul(tf_train_dataset, weights_1) + biases_1), weights_2) + biases_2
+    # loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=tf_train_labels))
+    #
+    # # Loss function with L2 Regularization with beta=0.01
+    # regularizers = tf.nn.l2_loss(weights_1) + tf.nn.l2_loss(weights_2)
+    # loss = tf.reduce_mean(loss + beta * regularizers)
 
     # Optimizer.
     optimizer = tf.train.GradientDescentOptimizer(0.5).minimize(loss)
